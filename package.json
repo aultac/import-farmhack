@@ -14,10 +14,12 @@
     "md5": "^2.2.1",
     "minimist": "^1.2.0",
     "moment": "^2.18.1",
+    "object-sizeof": "^1.2.0",
     "random-date": "^0.1.1",
     "randomstring": "^1.1.5",
     "request": "^2.81.0",
     "request-promise": "^4.2.1",
+    "sizeof": "^1.0.0",
     "uuid": "^3.0.1"
   },
   "devDependencies": {},

@@ -11,7 +11,7 @@ const moment = require('moment');
 const countlines = Promise.promisify(require('count-lines-in-file'));
 
 
-process.env.DEBUG='info,*TODO*,trace';
+process.env.DEBUG='info,*TODO*';
 const debug = require('debug');
 const todo = debug('XXX TODO XXX');
 const info = debug('info');
@@ -25,6 +25,7 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 const token = 'xyz';
 const oadabase = 'https://localhost/';
 const rows_per_index = 10000;
+const max_put_size = 100000; // approximate byte size limit on low-level data puts
 
 const overallstart = moment().unix();
 
@@ -39,6 +40,7 @@ function createRowIndices(oadapath,_type,numrows) {
       end: i+rows_per_index-1, 
       path, 
       _id: pathToId(path),
+      _type
     });
   }
   // Now create the page resources themselves
@@ -59,14 +61,26 @@ function createRowIndices(oadapath,_type,numrows) {
   });
 }
 
-function putDataChunk(data, pages, linecount) {
+function putDataChunk(data, pages, linecount, curindex) {
+  curindex = curindex || 0;
+  info('putDataChunk: on index '+curindex+' of '+data.length);
   const end = linecount-1; // linecount is like array length: index is -1
   const start = end - (data.length-1); // handles partial array at end;
   const page = _.find(pages, p => p.start === start);
   if (!page) info('WARNING: could not find page for start = ', start, ' in set of pages: ', pages);
   const body = { rows: { }, _type: page._type };
-  _.each(data, (d,i) => { body.rows[(i+start).toString()] = d }); // could create separate resource for each piece of data here
-  trace('putDataChunk: putting '+_.keys(body.rows).length+' rows to path ', page.path);
+  const sizeofonerow = JSON.stringify(data[0]).length;
+  trace('putDataChunk: sizeofonerow = ', sizeofonerow);
+  for (; curindex < data.length; curindex++) {
+    body.rows[(curindex+start).toString()] = data[curindex];
+    // To keep the put message size down, recursively put only 10kb of data at a time
+    if (_.keys(body.rows).length * sizeofonerow > max_put_size) {
+      trace('putDataChunk: putting up to index '+curindex+' of '+data.length+' rows');
+      return oadaPut(body,page.path)
+      .then(() => putDataChunk(data,pages,linecount,curindex)); // recursively put the next set of rows
+    }
+  } // could create separate resource for each piece of data here
+  trace('putDataChunk: putting final set of rows');
   return oadaPut(body, page.path);
 }
 
@@ -94,8 +108,9 @@ function putFileContents(oadapath,_type,filepath) {
       { 
         start: 0, 
         end: num_rows-1, 
-        path: oadapath, 
+        path: oadapath,
         _id: pathToId(oadapath),
+        _type,
       } 
     ]; // if there is just one page, don't put it in an index
   }).then(pages => {
@@ -150,7 +165,7 @@ function oadaPut(res,path,trycounter) { // path is optional, uses res._id if no 
   if (!trycounter) trycounter = 0;
   putcounter++;
   path = path || res._id;
-  info(putcounter + ': PUT '+oadabase+path+', body size = ', JSON.stringify(res).length);
+  info(putcounter + ' ('+(moment().unix()-overallstart)+' secs): PUT '+oadabase+path+', body size = ', JSON.stringify(res).length);
   //trace('PUT body = ',JSON.stringify(res));
   //return Promise.try(() => { return { statusCode: 204 } });
   return request({
@@ -242,7 +257,7 @@ return fs.readdirAsync(jsondir)
     return putFileContents(path.join('/'),_type,jsondir+'/'+filename);
   }).then(() => {
     info('Done with file '+filename);
-throw new Error('Stopping prematurely for testing');
+    //throw new Error('Stopping prematurely for testing');
   });
 }, { concurrency: 1 }) // we'll do one file at a time
 .then(() => {

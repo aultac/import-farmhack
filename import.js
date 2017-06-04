@@ -151,7 +151,7 @@ function oadaPut(res,path,trycounter) { // path is optional, uses res._id if no 
   putcounter++;
   path = path || res._id;
   info(putcounter + ': PUT '+oadabase+path+', body size = ', JSON.stringify(res).length);
-  trace('PUT body = ',JSON.stringify(res));
+  //trace('PUT body = ',JSON.stringify(res));
   //return Promise.try(() => { return { statusCode: 204 } });
   return request({
     uri: oadabase + path,

@@ -24,7 +24,7 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 const token = 'xyz';
 const oadabase = 'https://localhost/';
-const rows_per_index = 1000;
+const rows_per_index = 10000;
 
 const overallstart = moment().unix();
 
@@ -51,7 +51,7 @@ function createRowIndices(oadapath,_type,numrows) {
   }, { concurrency: 10 }).then(pages => {
     const body = { 'rows-index': { }, _type };
     _.each(pages, p => {
-      body['rows-index'][p.start] = { _id: p._id, _rev: '0-0' };
+      body['rows-index'][p.start.toString()] = { _id: p._id, _rev: '0-0' };
     });
     trace('createRowIndices: Putting all links to page resources into the parent');
     return oadaPut(body, oadapath)
@@ -65,7 +65,7 @@ function putDataChunk(data, pages, linecount) {
   const page = _.find(pages, p => p.start === start);
   if (!page) info('WARNING: could not find page for start = ', start, ' in set of pages: ', pages);
   const body = { rows: { }, _type: page._type };
-  _.each(data, (d,i) => { body.rows[i+start] = d }); // could create separate resource for each piece of data here
+  _.each(data, (d,i) => { body.rows[(i+start).toString()] = d }); // could create separate resource for each piece of data here
   trace('putDataChunk: putting '+_.keys(body.rows).length+' rows to path ', page.path);
   return oadaPut(body, page.path);
 }
@@ -85,8 +85,8 @@ function putFileContents(oadapath,_type,filepath) {
   return countlines(filepath)
   .then(num_lines => {
     num_rows = num_lines - 2; // the first and last lines are brackets for arrays
-    if (num_rows > 10000) {
-      trace('putFileContents: file '+filepath+' contains more than 10,000 rows ('+num_rows+'), no index needed');
+    if (num_rows > rows_per_index) {
+      trace('putFileContents: file '+filepath+' contains more than 10,000 rows ('+num_rows+'), creating indexes');
       return createRowIndices(oadapath,_type,num_lines);
     }
     trace('putFileContents: file '+filepath+' contains less than 10,000 rows ('+num_rows+'), no index needed');
@@ -240,7 +240,9 @@ return fs.readdirAsync(jsondir)
     trace('main: Paths built for file '+filename+', now putting file');
     const _type = all_path_results[all_path_results.length-1]._type; // last one is the longest path
     return putFileContents(path.join('/'),_type,jsondir+'/'+filename);
+  }).then(() => {
     info('Done with file '+filename);
+throw new Error('Stopping prematurely for testing');
   });
 }, { concurrency: 1 }) // we'll do one file at a time
 .then(() => {

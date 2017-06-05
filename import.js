@@ -10,6 +10,12 @@ const eventstream = require('event-stream');
 const moment = require('moment');
 const countlines = Promise.promisify(require('count-lines-in-file'));
 
+// If the import process dies at some point, put the "resume_url" here and it will
+// skip everything until it finds that one in the PUT stream.  Set it to an empty
+// string to have it start at the beginning
+//const resume_url = "https://localhost/bookmarks/farmhack/vicsterksel/animal/rows-index/80000";
+const resume_url = "";
+let found_resume_url = false;
 
 process.env.DEBUG='info,*TODO*';
 const debug = require('debug');
@@ -168,6 +174,15 @@ function oadaPut(res,path,trycounter) { // path is optional, uses res._id if no 
   info(putcounter + ' ('+(moment().unix()-overallstart)+' secs): PUT '+oadabase+path+', body size = ', JSON.stringify(res).length);
   //trace('PUT body = ',JSON.stringify(res));
   //return Promise.try(() => { return { statusCode: 204 } });
+  // If there is a resume url:
+  if (resume_url && resume_url.length > 0) {
+    // If we haven't found the resume URL yet, check if this is the right one:
+    if (!found_resume_url && oadabase+path !== resume_url) {
+      info('Have not found the resume_url yet, skipping this one until we do.');
+      return Promise.try(() => { return { statusCode: 204 } });
+    }
+    found_resume_url = true; // otherwise, we have found it at some point so do the PUT
+  }
   return request({
     uri: oadabase + path,
     method: 'PUT',

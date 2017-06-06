@@ -14,7 +14,7 @@ const countlines = Promise.promisify(require('count-lines-in-file'));
 // skip everything until it finds that one in the PUT stream.  Set it to an empty
 // string to have it start at the beginning
 //const resume_url = "https://localhost/bookmarks/farmhack/vicsterksel/animal";
-//const resume_url = "https://localhost/bookmarks/farmhack/vicsterksel/animal/rows-index/0";
+//const resume_url = "https://localhost/bookmarks/farmhack/vicsterksel/animal/rows-index/10000,";
 const resume_url = "";
 let found_resume_url = false;
 
@@ -75,6 +75,18 @@ function putDataChunk(data, pages, linecount, curindex) {
   const start = end - (data.length-1); // handles partial array at end;
   const page = _.find(pages, p => p.start === start);
   if (!page) info('WARNING: could not find page for start = ', start, ' in set of pages: ', pages);
+
+  // check here for resume_url as well as the one in oadaPut to speed things up:
+  if (resume_url && resume_url.length > 0) {
+    // If we haven't found the resume URL yet, check if this is the right one:
+    if (!found_resume_url && oadabase+page.path !== resume_url) {
+      info('Have not found the resume_url yet, skipping this one until we do.');
+      return Promise.try(() => { return { statusCode: 204 } });
+    }
+    found_resume_url = true; // otherwise, we have found it at some point so do the PUT
+  }
+ 
+
   const body = { rows: { }, _type: page._type };
   const sizeofonerow = JSON.stringify(data[0]).length;
   trace('putDataChunk: sizeofonerow = ', sizeofonerow);

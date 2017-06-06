@@ -14,8 +14,8 @@ const countlines = Promise.promisify(require('count-lines-in-file'));
 // skip everything until it finds that one in the PUT stream.  Set it to an empty
 // string to have it start at the beginning
 //const resume_url = "https://localhost/bookmarks/farmhack/vicsterksel/animal";
-//const resume_url = "https://localhost/bookmarks/farmhack/vicsterksel/animal/rows-index/10000,";
-const resume_url = "";
+const resume_url = "https://localhost/bookmarks/farmhack/nutreco/study2/rawfeedrecords/rows-index/50000";
+//const resume_url = "";
 let found_resume_url = false;
 
 process.env.DEBUG='info,*TODO*';
@@ -209,7 +209,7 @@ function oadaPut(res,path,trycounter) { // path is optional, uses res._id if no 
     trace('after PUT, result.statusCode = ', result.statusCode);
     return result;
   }).catch(err => {
-    info('ERROR: Attempt '+trycounter+': PUT '+oadabase+path+' failed: err.statusCode =  ',err.statusCode,', err.body = ', err.body);
+    info('ERROR: Attempt '+trycounter+': PUT '+oadabase+path+' failed: err.statusCode =  ',err.statusCode,', err.toString() = ', err.toString());
     if (trycounter < 10) {
       info('Trying PUT again since we have tried less than 10 times');
       return oadaPut(res,path,trycounter+1);
@@ -273,6 +273,21 @@ return fs.readdirAsync(jsondir)
 .map(filename => {
   const namePath = filename.replace(/\.csv\.json/,'').split('-');
   const path = [ 'bookmarks', 'farmhack', ...namePath ];
+  const companyName = namePath[0];
+
+  // Also check for resume_url here and in oadaPut and putDataChunk to speed things up
+  if (resume_url && resume_url.length > 0) {
+    if (!found_resume_url && resume_url.indexOf(companyName) < 0) {
+      info('Company '+companyName+' files are not part of resume_url, skipping to next one.');
+      return;
+    }
+    info('Company name ('+companyName+') IS part of resume_url ('+resume_url+').  Checking next part of path.');
+    // Otherwise, company is part of it, check the next one too:
+    if (!found_resume_url && resume_url.indexOf(namePath[1]) < 0) {
+      info('Company '+companyName+' files ARE part of resume_url, but next part of filename IS NOT part of resume_url.  Skipping to next one.');
+      return;
+    }
+  }
 
   trace('main: Building path '+path);
   // Create all the resources along the path

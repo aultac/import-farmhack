@@ -13,7 +13,8 @@ const countlines = Promise.promisify(require('count-lines-in-file'));
 // If the import process dies at some point, put the "resume_url" here and it will
 // skip everything until it finds that one in the PUT stream.  Set it to an empty
 // string to have it start at the beginning
-//const resume_url = "https://localhost/bookmarks/farmhack/vicsterksel/animal/rows-index/80000";
+//const resume_url = "https://localhost/bookmarks/farmhack/vicsterksel/animal";
+//const resume_url = "https://localhost/bookmarks/farmhack/vicsterksel/animal/rows-index/0";
 const resume_url = "";
 let found_resume_url = false;
 
@@ -31,7 +32,7 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 const token = 'xyz';
 const oadabase = 'https://localhost/';
 const rows_per_index = 10000;
-const max_put_size = 100000; // approximate byte size limit on low-level data puts
+const max_put_size = 10000000; // approximate byte size limit on low-level data puts
 
 const overallstart = moment().unix();
 

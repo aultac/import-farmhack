@@ -14,7 +14,7 @@ const countlines = Promise.promisify(require('count-lines-in-file'));
 // skip everything until it finds that one in the PUT stream.  Set it to an empty
 // string to have it start at the beginning
 //const resume_url = "https://localhost/bookmarks/farmhack/vicsterksel/animal";
-const resume_url = "https://localhost/bookmarks/farmhack/nutreco/study2/rawfeedrecords/rows-index/50000";
+const resume_url = "https://localhost/bookmarks/farmhack/nutreco/study1/rawfeedrecords/rows-index/760000"; 
 //const resume_url = "";
 let found_resume_url = false;
 
@@ -29,7 +29,7 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 // Note: csvtojson works nicely on command line to get JSON files
 
-const token = 'xyz';
+const token = 'KwGmHSxxAWsgJlXEHDmN2Rn1yemKA_awmEzUoPZW';
 const oadabase = 'https://localhost/';
 const rows_per_index = 10000;
 const max_put_size = 10000000; // approximate byte size limit on low-level data puts
@@ -228,8 +228,8 @@ function oadaPut(res,path,trycounter) { // path is optional, uses res._id if no 
 // stuff in the database anyway
 const pathToId = path => {
   let _key = '';
-  if (typeof path === 'string') _key = md5(path);
-  else                          _key = md5(path.join('/'));
+  if (typeof path === 'string') _key = md5(path+token);
+  else                          _key = md5([...path, token].join('/'));
   return 'resources/'+_key;
 }
 

@@ -15,7 +15,7 @@ const countlines = Promise.promisify(require('count-lines-in-file'));
 // string to have it start at the beginning
 //const resume_url = "https://localhost/bookmarks/farmhack/vicsterksel/animal";
 //const resume_url = "https://localhost/bookmarks/farmhack/nutreco/study1/rawfeedrecords/rows-index/760000"; 
-const resume_url = "";
+const resume_url = "https://localhost/bookmarks/farmhack/vicsterksel/weight_history/rows-index/430000";
 let found_resume_url = false;
 
 process.env.DEBUG='info,*TODO*,trace';
@@ -53,8 +53,15 @@ function createRowIndices(oadapath,_type,numrows) {
   // Now create the page resources themselves
   return Promise.map(pages, page => {
     trace('createRowIndices: Putting page resource '+page._id+' for path '+page.path);
-    return oadaPut({ _id: page._id, context: { 'rows-index': page.start }, rows: {}, _type })
-    .then(() => page);
+    return oadaGet(page._id)
+    .then(exists => {
+      if (exists) {
+        info('createRowIndices: page resource /resources/'+page._id+' already exists, not repeating PUT');
+        return null;
+      }
+      trace('createRowIndices: page resource /resources/'+page._id+' does not exist, PUTting');
+      return oadaPut({ _id: page._id, context: { 'rows-index': page.start }, rows: {}, _type })
+    }).then(() => page);
 
   // now each of the page resources exist, put to the parent resource with all the links to the pages
   }, { concurrency: 1 }).then(pages => {
@@ -63,8 +70,15 @@ function createRowIndices(oadapath,_type,numrows) {
       body['rows-index'][p.start.toString()] = { _id: p._id, _rev: '0-0' };
     });
     trace('createRowIndices: Putting all links to page resources into the parent');
-    return oadaPut(body, oadapath)
-    .then(() => pages);
+    return oadaGet(oadapath+'/rows-index/0', )
+    .then(exists => {
+      if (exists) {
+        info('createRowIndices: page resource '+oadapath+' already has rows-index/0, NOT repeating PUT');
+        return;
+      }
+      trace('createRowIndices: page resource '+oadapath+' does not have rows-index/0, doing PUT');
+      return oadaPut(body, oadapath)
+    }).then(() => pages);
   });
 }
 
@@ -90,17 +104,34 @@ function putDataChunk(data, pages, linecount, curindex) {
   const body = { rows: { }, _type: page._type };
   const sizeofonerow = JSON.stringify(data[0]).length;
   trace('putDataChunk: sizeofonerow = ', sizeofonerow);
+  let thisrowindex = 0;
   for (; curindex < data.length; curindex++) {
-    body.rows[(curindex+start).toString()] = data[curindex];
+    thisrowindex = curindex+start;
+    body.rows[(thisrowindex).toString()] = data[curindex];
     // To keep the put message size down, recursively put only 10kb of data at a time
     if (_.keys(body.rows).length * sizeofonerow > max_put_size) {
       trace('putDataChunk: putting up to index '+curindex+' of '+data.length+' rows');
-      return oadaPut(body,page.path)
-      .then(() => putDataChunk(data,pages,linecount,curindex)); // recursively put the next set of rows
+      // Check if this put has already been made by getting just one row back:
+      return oadaGet(page.path+'/rows/'+thisrowindex)
+      .then(row => {
+        if (row) {
+          info('putDataChunk: chunk for path '+page.path+' already done, not repeating PUT');
+          return;
+        }
+        info('putDataChunk: chunk for path '+page.path+' not there yet, executing PUT');
+        return oadaPut(body,page.path)
+      }).then(() => putDataChunk(data,pages,linecount,curindex)); // recursively put the next set of rows
     }
   } // could create separate resource for each piece of data here
   trace('putDataChunk: putting final set of rows');
-  return oadaPut(body, page.path);
+  return oadaGet(page.path+'/rows/'+thisrowindex)
+  .then(exists => {
+    if (exists) {
+      info('putDataChunk: final put, path '+page.path+' already has /rows/'+thisrowindex+', not repeating PUT');
+      return true;
+    }
+    return oadaPut(body, page.path);
+  });
 }
 
 function putFileContents(oadapath,_type,filepath) {
@@ -175,6 +206,23 @@ function putFileContents(oadapath,_type,filepath) {
 
       })).on('error', err => { info('ERROR: outer read stream error = ', err); reject(err) });
     });
+  });
+}
+
+function oadaGet(path) {
+  return request({
+    uri: oadabase + path,
+    method: 'GET',
+    headers: { 
+      authorization: 'Bearer '+token,
+    },
+    resolveWithFullResponse: true,
+  }).then(result => {
+    trace('after GET, result.statusCode = ', result.statusCode);
+    return true;
+  }).catch(err => {
+    info('GET for '+oadabase+path+' failed.  Assuming does not exist.');
+    return null;
   });
 }
 
@@ -257,12 +305,20 @@ function buildPath(path) {
       const childid = pathToId(childfullpath);
       body[childkey] = { _id: childid, _rev: '0-0' };
     }
-    return oadaPut(body)
-    .then(result => {
-      if (result.statusCode > 299) throw new Error('Failed to build path '+ fullpath + ', err = ' + result.body);
-      info('Successfully built path ', fullpath.join('/'));
-      results.push(body);
-    })
+    return oadaGet(body._id+'/_type')
+    .then(exists => {
+      if (exists) {
+        info('buildPath: resource /resources/'+body._id+'/_type already exists, not PUTting resource');
+        results.push({ _type }); // snd back the _type so outer thing can set the proper type
+      }
+      trace('buildPath: resource /resources/'+body._id+' does not exist, doing PUT');
+      return oadaPut(body)
+      .then(result => {
+        if (result.statusCode > 299) throw new Error('Failed to build path '+ fullpath + ', err = ' + result.body);
+        info('Successfully built path ', fullpath.join('/'));
+        results.push(body);
+      });
+    });
   }).then(() => results);
 };
 

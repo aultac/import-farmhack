@@ -14,11 +14,11 @@ const countlines = Promise.promisify(require('count-lines-in-file'));
 // skip everything until it finds that one in the PUT stream.  Set it to an empty
 // string to have it start at the beginning
 //const resume_url = "https://localhost/bookmarks/farmhack/vicsterksel/animal";
-const resume_url = "https://localhost/bookmarks/farmhack/nutreco/study1/rawfeedrecords/rows-index/760000"; 
-//const resume_url = "";
+//const resume_url = "https://localhost/bookmarks/farmhack/nutreco/study1/rawfeedrecords/rows-index/760000"; 
+const resume_url = "";
 let found_resume_url = false;
 
-process.env.DEBUG='info,*TODO*';
+process.env.DEBUG='info,*TODO*,trace';
 const debug = require('debug');
 const todo = debug('XXX TODO XXX');
 const info = debug('info');
@@ -57,7 +57,7 @@ function createRowIndices(oadapath,_type,numrows) {
     .then(() => page);
 
   // now each of the page resources exist, put to the parent resource with all the links to the pages
-  }, { concurrency: 10 }).then(pages => {
+  }, { concurrency: 1 }).then(pages => {
     const body = { 'rows-index': { }, _type };
     _.each(pages, p => {
       body['rows-index'][p.start.toString()] = { _id: p._id, _rev: '0-0' };
@@ -239,8 +239,10 @@ const pathToId = path => {
 // buildPath will take an array that represents a full path, and
 // create each document in the OADA cloud along the way
 function buildPath(path) {
-  return Promise.map(path,(p,i) => {
+  const results = [];
+  return Promise.each(path,(p,i) => {
     const fullpath = path.slice(0,i+1); // [ [ bookmarks ], [ bookmarks, farmhack ], ... ],
+    trace('buildPath: index '+i+', fullpath = ', fullpath);
     let _type = 'application/vnd.'+fullpath.slice(1).join('.')+'.1+json'; // slice off the bookmarks: vnd.farmhack...
     let _id = pathToId(fullpath);
     if (p === 'bookmarks') {
@@ -259,9 +261,9 @@ function buildPath(path) {
     .then(result => {
       if (result.statusCode > 299) throw new Error('Failed to build path '+ fullpath + ', err = ' + result.body);
       info('Successfully built path ', fullpath.join('/'));
-      return body;
+      results.push(body);
     })
-  });
+  }).then(() => results);
 };
 
 

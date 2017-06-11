@@ -9,6 +9,12 @@ const eventstream = require('event-stream');
 const moment = require('moment');
 const countlines = Promise.promisify(require('count-lines-in-file'));
 const mkdirp = Promise.promisify(require('mkdirp'));
+const argv = require('minimist')(process.argv.slice(2));
+
+if (argv._.length !== 1 || (argv._[0] !== 'frank' && argv._[0] !== 'randy')) {
+  console.log('USAGE: node file-import.js <frank|randy>');
+  process.exit();
+}
 
 process.env.DEBUG='info,*TODO*';
 const debug = require('debug');
@@ -20,20 +26,23 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 // Note: csvtojson works nicely on command line to get JSON files
 
-const user = {
-  _id: 'users/default:users_frank_123',
-  name: 'frank',
-  authorizationid: "authorizations/default:authorization-123",
-  json: './json',
-  bookmarksid: 'resources/default:resources_bookmarks_123',
+const users = {
+  frank: {
+    _id: 'users/default:users_frank_123',
+    name: 'frank',
+    authorizationid: "authorizations/default:authorization-123",
+    json: './json',
+    bookmarksid: 'resources/default:resources_bookmarks_123',
+  },
+  randy: {
+    _id: 'users/default:users_frank_123',
+    name: 'randy',
+    authorizationid: "authorizations/default:authorization-333",
+    json: './rnd-json',
+    bookmarksid: 'resources/default:resources_bookmarks_333',
+  },
 };
-//const user = {
-//  _id: 'users/default:users_frank_123',
-//  name: 'randy',
-//  authorizationid: "authorizations/default:authorization-333",
-//  json: './rnd-json',
-//  bookmarksid: 'resources/default:resources_bookmarks_333',
-//}
+const user = users[argv._[0]];
 const outputdir = 'generateImport_'+user.name+'_'+moment().format('YYYY-MM-DD_HH:mm:ss');
 const rows_per_index = 10000;
 

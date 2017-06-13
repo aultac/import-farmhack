@@ -44,7 +44,7 @@ const users = {
 };
 const user = users[argv._[0]];
 const outputdir = 'generateImport_'+user.name+'_'+moment().format('YYYY-MM-DD_HH:mm:ss');
-const rows_per_index = 500000;
+const rows_per_index = 10000;
 
 const overallstart = +moment();
 //-------------------------------------------------------

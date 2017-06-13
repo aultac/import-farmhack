@@ -44,7 +44,7 @@ const users = {
 };
 const user = users[argv._[0]];
 const outputdir = 'generateImport_'+user.name+'_'+moment().format('YYYY-MM-DD_HH:mm:ss');
-const rows_per_index = 10000;
+const rows_per_index = 500000;
 
 const overallstart = +moment();
 //-------------------------------------------------------
@@ -62,7 +62,7 @@ const pathToType = path => {
   if (path.length === 1 && path[0] === 'bookmarks') return 'application/vnd.oada.bookmarks.1+json';
   let indexfree_path = [];
   for (let i=0; i<path.length; i++) {
-    if (!path[i].match(/.*-index/) && (!path[i.match(/.*animals/))) indexfree_path.push(path[i]);
+    if (!path[i].match(/.*-index/) && (!path[i].match(/responders/))) indexfree_path.push(path[i]);
     else i++; // skip this one and the next one
   }
   indexfree_path = indexfree_path.slice(1); // get rid of bookmarks
@@ -83,6 +83,27 @@ function putDataChunk(pagestart, rows, path, total_rows) {
   }
   info('putDataChunk: PUT '+path.join('/'));
   return ensurePathPut(path, body);
+}
+
+function putDataChunkNew(pagestart, rows, path, total_rows) {
+  // use an index if total lines are going to be greater than rows_per_index
+  var animalIndex = {}
+  return Promise.each(Object.keys(rows), (i)=> {
+    var row = rows[i];
+    var animalId = row.responder;
+    animalIndex[animalId] = animalIndex[animalId] || { rows: {} };
+    return animalIndex[animalId].rows[(+i)+pagestart] = row;
+  }).then(() => {
+    return Promise.each(Object.keys(animalIndex), (animal) => {
+      var body = animalIndex[animal];
+      var newPath = [ ...path, 'responders', animal];
+      body.context = {
+        'responsers': animal,
+      };
+      info('putDataChunk: PUT '+newPath.join('/'));
+      return ensurePathPut(newPath, body);
+    })
+  })
 }
 
 function putFileContents(oadapath,filepath) {
@@ -122,7 +143,7 @@ function putFileContents(oadapath,filepath) {
         if (pagerowcount === rows_per_index) {
           this.pause();
           trace('putFileContents: page full, putting '+oadapath.join('/'));
-          putDataChunk(pagestart,rows,oadapath,num_total_rows)
+          putDataChunkNew(pagestart,rows,oadapath,num_total_rows)
           .then(() => {
             pagestart = totalrowcount;
             pagerowcount = 0;
@@ -137,7 +158,7 @@ function putFileContents(oadapath,filepath) {
         // send the remaining items if there are any:
         if (pagerowcount > 0) {
           trace('putFileContents: final page, putting '+oadapath.join('/'));
-          putDataChunk(pagestart,rows,oadapath,num_total_rows)
+          putDataChunkNew(pagestart,rows,oadapath,num_total_rows)
           .then(() => resolve());
         }
       })).on('error', err => { info('ERROR: outer read stream error = ', err); reject(err) });
@@ -280,7 +301,7 @@ function ensurePathPut(path, body) {
   if (JSON.stringify(body).length < 1000) trace('ensurePath: and body = ', body);
 
   const lastkey = ''+path.slice(-1)[0];
-  const isindex = !!lastkey.match(/-index/);
+  const isindex = !!lastkey.match(/-index/) || lastkey.match(/responders/);
   const parent_path = path.slice(0,-1);
   return Promise.try(() => {
     // If this is not an index, we need to put the body as a resource itself,

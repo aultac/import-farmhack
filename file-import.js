@@ -10,6 +10,7 @@ const moment = require('moment');
 const countlines = Promise.promisify(require('count-lines-in-file'));
 const mkdirp = Promise.promisify(require('mkdirp'));
 const argv = require('minimist')(process.argv.slice(2));
+const animalIdMapping = require('./animalIdMapping.json')
 
 if (argv._.length !== 1 || (argv._[0] !== 'frank' && argv._[0] !== 'randy')) {
   console.log('USAGE: node file-import.js <frank|randy>');
@@ -44,7 +45,7 @@ const users = {
 };
 const user = users[argv._[0]];
 const outputdir = 'generateImport_'+user.name+'_'+moment().format('YYYY-MM-DD_HH:mm:ss');
-const rows_per_index = 10000;
+const rows_per_index = 50000;
 
 const overallstart = +moment();
 //-------------------------------------------------------
@@ -85,6 +86,33 @@ function putDataChunk(pagestart, rows, path, total_rows) {
   return ensurePathPut(path, body);
 }
 
+function putDataChunkNew(pagestart, rows, path, total_rows) {
+  // use an index if total lines are going to be greater than rows_per_index
+  var animalIndex = {}
+  return Promise.each(Object.keys(rows), (i)=> {
+    var row = rows[i]
+    var animalId;
+    if (row.animal) animalId = animalIdMapping[row.animal.trim()]
+    if (row.volg_id) animalId = animalIdMapping[row.volg_id]
+    if (row.alt_id) animalId = row.alt_id
+    animalIndex[animalId] = animalIndex[animalId] || {};
+    animalIndex[animalId].rows = animalIndex[animalId].rows || {};
+    return animalIndex[animalId].rows[pagestart+i] = row;
+  }).then(() => {
+    console.log(animalIndex)
+    return Promise.each(Object.keys(animalIndex), (animal) => {
+      if (isNaN(animal)) return false
+      var body = animalIndex[animal];
+      var newPath = [ ...path, 'animal-index', animal];
+      body.context = {
+        'animal-index': animal,
+      };
+      info('putDataChunk: PUT '+newPath.join('/'));
+      return ensurePathPut(newPath, body);
+    })
+  })
+}
+
 function putFileContents(oadapath,filepath) {
   // /bookmarks/farmhack/nutreco/study1/bw/sheet1/rows-index/0/rows/[0, 1, 2, 3]
   // /bookmarks/farmhack/nutreco/study1/bw/sheet1/rows-index/10000/rows/[10000,10001,]
@@ -122,7 +150,7 @@ function putFileContents(oadapath,filepath) {
         if (pagerowcount === rows_per_index) {
           this.pause();
           trace('putFileContents: page full, putting '+oadapath.join('/'));
-          putDataChunk(pagestart,rows,oadapath,num_total_rows)
+          putDataChunkNew(pagestart,rows,oadapath,num_total_rows)
           .then(() => {
             pagestart = totalrowcount;
             pagerowcount = 0;
@@ -137,7 +165,7 @@ function putFileContents(oadapath,filepath) {
         // send the remaining items if there are any:
         if (pagerowcount > 0) {
           trace('putFileContents: final page, putting '+oadapath.join('/'));
-          putDataChunk(pagestart,rows,oadapath,num_total_rows)
+          putDataChunkNew(pagestart,rows,oadapath,num_total_rows)
           .then(() => resolve());
         }
       })).on('error', err => { info('ERROR: outer read stream error = ', err); reject(err) });
@@ -280,7 +308,7 @@ function ensurePathPut(path, body) {
   if (JSON.stringify(body).length < 1000) trace('ensurePath: and body = ', body);
 
   const lastkey = ''+path.slice(-1)[0];
-  const isindex = !!lastkey.match(/-index/);
+  const isindex = !!lastkey.match(/-index/) || lastkey.match(/animals/);
   const parent_path = path.slice(0,-1);
   return Promise.try(() => {
     // If this is not an index, we need to put the body as a resource itself,
